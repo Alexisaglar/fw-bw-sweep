@@ -1,11 +1,13 @@
 import numpy as np
 import csv
 
+#Constants 
 Sbase=100; #MVA
 Vbase=240.177; #kV
 Zbase=(Vbase**2)/Sbase
 phases = 3
 PF = 0.95
+slackBus = 1
 
 
 with open('data/LineCodes.csv', newline='') as linecodefile, open('data/Lines.csv', newline='') as linesfile, open('data/Loads.csv') as loadsfile, open('data/Load Profiles/Load_Profile_1.csv') as profilefile, open('data/Buscoords.csv') as busfile:
@@ -16,7 +18,7 @@ with open('data/LineCodes.csv', newline='') as linecodefile, open('data/Lines.cs
     bus_coords = np.array(list(csv.reader(busfile)), dtype=object)
     
 #Keep only useful columns for arrays
-lines_code = lines_code[1:,[0,2,3,4,5,6,7]]
+#lines_code = lines_code[1:,[0,2,3,4,5,6,7]]
 load_profile = load_profile[:,1]
 
 
@@ -40,39 +42,49 @@ while len(backOrderedNodes) < len(lines_data)-1:
 forwardOrderedLine = np.flip(backOrderedLine)
 
 #Initiate arrays
-resistance = ['ResistanceR1']
-reactance = ['ReactanceX1']
-impedance = ['ImpedanceZ']
+resistance_Rs = ['resistance_Rs']
+resistance_Rm = ['resistance_Rm']
+reactance_Xs = ['reactance_Xs']
+reactance_Xm = ['reactance_Xm']
+impedance_Zs = ['impedance_Zs']
+impedance_Zm = ['impedance_Zm']
 
 #Find in line code data the specific resitance and reactance for each line
 for i in range(len(lines_data)):
     if i != 0:
-        resistance = np.append(resistance, lines_code[np.where(lines_data[i,6] == lines_code[:,0])[0][0], 2])
-        reactance = np.append(reactance, lines_code[np.where(lines_data[i,6] == lines_code[:,0])[0][0], 3])
+        resistance_Rs = np.append(resistance_Rs, lines_code[np.where(lines_data[i,6] == lines_code[:,0])[0][0], 2])
+        resistance_Rm = np.append(resistance_Rm, lines_code[np.where(lines_data[i,6] == lines_code[:,0])[0][0], 4])
+        reactance_Xs = np.append(reactance_Xs, lines_code[np.where(lines_data[i,6] == lines_code[:,0])[0][0], 3])
+        reactance_Xm = np.append(reactance_Xm, lines_code[np.where(lines_data[i,6] == lines_code[:,0])[0][0], 5])
 
 #Append the resistance and reactance to the array
-lines_data = np.append(lines_data, resistance.reshape(906,1), axis=1)
-lines_data = np.append(lines_data, reactance.reshape(906,1), axis=1)
+lines_data = np.append(lines_data, resistance_Rs.reshape(906,1), axis=1)
+lines_data = np.append(lines_data, reactance_Xs.reshape(906,1), axis=1)
+
+lines_data = np.append(lines_data, resistance_Rm.reshape(906,1), axis=1)
+lines_data = np.append(lines_data, reactance_Xm.reshape(906,1), axis=1)
 
 #Calculate impedances of the lines
 for i in range(len(lines_data)):
     if i !=0:
-        impedance = np.append(impedance, float(lines_data[i,7])+1j*float(lines_data[i,8]))
+        impedance_Zs = np.append(impedance_Zs, float(lines_data[i,7])+1j*float(lines_data[i,8]))
+        impedance_Zm = np.append(impedance_Zm, float(lines_data[i,9])+1j*float(lines_data[i,10]))
 
 #Append impedances to data array 
-lines_data = np.append(lines_data, impedance.reshape(906,1), axis=1)
+lines_data = np.append(lines_data, impedance_Zs.reshape(906,1), axis=1)
+lines_data = np.append(lines_data, impedance_Zm.reshape(906,1), axis=1)
 
 
 #Create array with real and reactive power for each bus with 3 phases
 Pi = np.zeros((len(bus_coords)-1, phases, len(load_profile)-1))
 for i in range(len(loads_data)):
         if i != 0:
-            #bus = int(loads_data[i,2])
+            bus = int(loads_data[i,2])
             bus_phase = loads_data[i,3]
             if bus_phase == 'A': bus_phase = 0
             if bus_phase == 'B': bus_phase = 1
             if bus_phase == 'C': bus_phase = 2
-            Pi[i-1,bus_phase,:] = load_profile[1:]
+            Pi[bus-1,bus_phase,:] = load_profile[1:]
 #Convert power to Watts instead of kW >
 Pi = Pi*1000
 
@@ -82,23 +94,25 @@ Qi = np.zeros((len(bus_coords)-1, phases, len(load_profile)-1))
 Qi = (Pi/0.95) * np.sin(np.arccos(PF))
 
 
-calcNodeVoltages = np.zeros((len(loads_data)-1, phases, 50))
-calcLoadCurrents = np.zeros((len(loads_data)-1, phases, 50))
+calcNodeVoltages = np.zeros((len(bus_coords)-1, phases, 50))
+#calcLoadCurrents = np.zeros((len(bus_coords)-1, phases, 50))
 calcLineCurrents = np.zeros((len(lines_data)-1, phases, 50))
+Tload = np.zeros((1440,3))
+
 #----- Backward-forward sweep -----#
 for i in range(len(load_profile)-1):
     #Creating starting values for algorithm
     error = 1
     epsilon = 0.000001
-    iter = 1 
-    nodeVoltages = np.zeros((len(bus_coords)-1, phases, 900))
-    loadCurrents = np.zeros((len(bus_coords)-1, phases, 900))
-    lineCurrents = np.zeros((len(lines_data)-1, phases, 900))
+    iter = 0 
+    nodeVoltages = np.zeros((len(bus_coords)-1, phases, 50))
+    loadCurrents = np.zeros((len(bus_coords)-1, phases, 50))
+    lineCurrents = np.zeros((len(lines_data)-1, phases, 50))
     
     if i == 0:
-        nodeVoltages[:,:,iter-1] = np.ones((len(bus_coords)-1,3))*((1*np.exp(1j*(-2*np.pi/3))*np.exp(1j*(2*np.pi/3)))*Vbase) 
+        nodeVoltages[:,:,iter] = np.ones((len(bus_coords)-1,3))*((1*np.exp(1j*(-2*np.pi/3))*np.exp(1j*(2*np.pi/3)))*Vbase) 
     else:
-        nodeVoltages[:,:,iter] = calcNodeVoltages[:,:,i]
+        nodeVoltages[:,:,iter] = calcNodeVoltages[:,:,i-1]
     
     while error > epsilon:
         iter = iter+1
@@ -107,18 +121,48 @@ for i in range(len(load_profile)-1):
             break
         loadCurrents[:,:,iter] = np.conj((Pi[:,:,i]+1j*Qi[:,:,i])/nodeVoltages[:,:,i]) #Calculate load current from S/V
 
-        #----- start backward sweep -----#
+        #----- Start backward sweep -----#
         for bsweep in range(len(backOrderedNodes)-1):
             node = int(backOrderedNodes[bsweep])
             nA_n = np.where(lines_data[1:,1].astype(int) == node)[0]
-            #print(nA_n)
             if np.size(nA_n) != 0:
-                 outCurrents = lineCurrents[nA_n, :, iter]
+                for b in range(len(nA_n)):
+                    outCurrents = outCurrents + lineCurrents[nA_n[b], :, iter]
             else:
                 outCurrents = np.zeros(3)
+
+            print(outCurrents)
             outCurrentSum = np.sum(outCurrents)
-            nB_n = np.where(lines_data[1:,2].astype(int) == node)[0]
+            nB_n = np.where(lines_data[1:,2].astype(int) == node)[0][0]
             loadCurs = loadCurrents[node-1,:,iter]
             sumCurs = loadCurs + outCurrentSum
-            lineCurrents[nB_n,:,iter] = sumCurs
-            print(loadCurs)
+            print(sumCurs)
+            print(nA_n, nB_n)
+            lineCurrents[nB_n,:,iter] = sumCurs[0]
+
+        #----- Start forward sweep -----#
+        #----- Assume transformer voltage is fixed (Slack bus)
+        nodeVoltages[slackBus,:,iter] = np.ones(3)*((1*np.exp(1j*(-2*np.pi/3))*np.exp(1j*(2*np.pi/3)))*Vbase) 
+        nodeA_list = lines_data[1:,1].astype(int)
+        nodeB_list = lines_data[1:,2].astype(int)
+        for fsweep in range(len(forwardOrderedLine)):
+            lineNum = int(forwardOrderedLine[fsweep])
+            lineIn = np.where(nodeA_list == lineNum)[0][0]
+            nodeA = nodeA_list[lineIn]
+            nodeB = nodeB_list[lineIn]
+            VA = nodeVoltages[np.where(bus_coords[1:,0].astype(int) == nodeA)[0],:,iter]
+            Il = np.matrix(lineCurrents[lineIn,:,iter])
+            
+            Zs = lines_data[lineIn+1,11]
+            Zm = lines_data[lineIn+1,12]
+
+            Z_matrix = np.matrix(np.array([[Zs, Zm, Zm],[Zm, Zs, Zm],[Zm, Zm,Zs]], dtype=complex))
+            VB = VA - (Il*Z_matrix)
+            nodeVoltages[np.where(bus_coords[1:,0].astype(int) == nodeB)[0],:,iter] = VB
+            
+
+        #----- CHECK FOR CONVERGENCE -----#
+        error = np.subtract(nodeVoltages[:,:,iter], nodeVoltages[:,:,iter-1]).max()
+        calcLineCurrents[:,:,i] = lineCurrents[:,:,iter]
+        calcNodeVoltages[:,:,i] = nodeVoltages[:,:,iter]
+        Tload[i,:] = calcNodeVoltages[0,:,i]*calcLineCurrents[0,:,i]
