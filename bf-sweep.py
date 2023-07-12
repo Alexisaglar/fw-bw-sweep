@@ -7,7 +7,7 @@ Vbase=240.177; #kV
 Zbase=(Vbase**2)/Sbase
 phases = 3
 PF = 0.95
-slackBus = 1
+slackBus = 0
 
 
 with open('data/LineCodes.csv', newline='') as linecodefile, open('data/Lines.csv', newline='') as linesfile, open('data/Loads.csv') as loadsfile, open('data/Load Profiles/Load_Profile_1.csv') as profilefile, open('data/Buscoords.csv') as busfile:
@@ -110,21 +110,24 @@ for i in range(len(load_profile)-1):
     lineCurrents = np.zeros((len(lines_data)-1, phases, 50))
     
     if i == 0:
-        nodeVoltages[:,:,iter] = np.ones((len(bus_coords)-1,3))*((1*np.exp(1j*(-2*np.pi/3))*np.exp(1j*(2*np.pi/3)))*Vbase) 
+        nodeVoltages[:,:,iter] = np.ones((len(bus_coords)-1,3))*((1*np.exp(1j*(-2*np.pi/3))*np.exp(1j*(2*np.pi/3)))*Vbase).astype(complex)
     else:
-        nodeVoltages[:,:,iter] = calcNodeVoltages[:,:,i-1]
+        nodeVoltages[:,:,iter] = calcNodeVoltages[:,:,i]
     
     while error > epsilon:
         iter = iter+1
         if iter > 100: 
             print('Error') 
             break
-        loadCurrents[:,:,iter] = np.conj((Pi[:,:,i]+1j*Qi[:,:,i])/nodeVoltages[:,:,i]) #Calculate load current from S/V
+        loadCurrents[:,:,iter] = np.conj((Pi[:,:,i]+1j*Qi[:,:,i])/nodeVoltages[:,:,iter-1]) #Calculate load current from S/V
 
         #----- Start backward sweep -----#
         for bsweep in range(len(backOrderedNodes)-1):
             node = int(backOrderedNodes[bsweep])
             nA_n = np.where(lines_data[1:,1].astype(int) == node)[0]
+            sumCurs = np.zeros(3)
+            loadCurs = np.zeros(3)
+            outCurrents = np.zeros(3)
             if np.size(nA_n) != 0:
                 for b in range(len(nA_n)):
                     outCurrents = outCurrents + lineCurrents[nA_n[b], :, iter]
@@ -132,13 +135,14 @@ for i in range(len(load_profile)-1):
                 outCurrents = np.zeros(3)
 
             print(outCurrents)
-            outCurrentSum = np.sum(outCurrents)
+            #outCurrentSum = np.sum(outCurrents)
             nB_n = np.where(lines_data[1:,2].astype(int) == node)[0][0]
             loadCurs = loadCurrents[node-1,:,iter]
-            sumCurs = loadCurs + outCurrentSum
+            sumCurs = loadCurs + outCurrents
+            print(loadCurs)
             print(sumCurs)
             print(nA_n, nB_n)
-            lineCurrents[nB_n,:,iter] = sumCurs[0]
+            lineCurrents[nB_n,:,iter] = sumCurs
 
         #----- Start forward sweep -----#
         #----- Assume transformer voltage is fixed (Slack bus)
@@ -150,7 +154,7 @@ for i in range(len(load_profile)-1):
             lineIn = np.where(nodeA_list == lineNum)[0][0]
             nodeA = nodeA_list[lineIn]
             nodeB = nodeB_list[lineIn]
-            VA = nodeVoltages[np.where(bus_coords[1:,0].astype(int) == nodeA)[0],:,iter]
+            VA = nodeVoltages[np.where(bus_coords[1:,0].astype(int) == nodeA)[0][0],:,iter-1]
             Il = np.matrix(lineCurrents[lineIn,:,iter])
             
             Zs = lines_data[lineIn+1,11]
@@ -158,11 +162,15 @@ for i in range(len(load_profile)-1):
 
             Z_matrix = np.matrix(np.array([[Zs, Zm, Zm],[Zm, Zs, Zm],[Zm, Zm,Zs]], dtype=complex))
             VB = VA - (Il*Z_matrix)
+            print(VA)
+            print(VB)
+            print(Z_matrix)
+            #print(VB)
             nodeVoltages[np.where(bus_coords[1:,0].astype(int) == nodeB)[0],:,iter] = VB
-            
 
-        #----- CHECK FOR CONVERGENCE -----#
-        error = np.subtract(nodeVoltages[:,:,iter], nodeVoltages[:,:,iter-1]).max()
+
+            #----- CHECK FOR CONVERGENCE -----#
+            #error = int(np.subtract(nodeVoltages[:,:,iter], nodeVoltages[:,:,iter-1]).max())
         calcLineCurrents[:,:,i] = lineCurrents[:,:,iter]
         calcNodeVoltages[:,:,i] = nodeVoltages[:,:,iter]
         Tload[i,:] = calcNodeVoltages[0,:,i]*calcLineCurrents[0,:,i]
