@@ -22,25 +22,6 @@ with open('data/LineCodes.csv', newline='') as linecodefile, open('data/Lines.cs
 load_profile = load_profile[:,1]
 
 
-#--------- Backward ordered nodes and lines -----#
-#--------- First determine ending nodes
-endNodes = []
-backOrderedNodes = []
-backOrderedLine = []
-nodeA = lines_data[1:,1].astype(int)
-nodeB = lines_data[1:,2].astype(int)
-while len(backOrderedNodes) < len(lines_data)-1:
-    endNodes = np.setdiff1d(nodeB, nodeA)
-    backOrderedNodes = np.append(backOrderedNodes, endNodes)
-    idx = np.intersect1d(nodeB, endNodes, return_indices=True)[1]
-    for i in range(len(idx)):
-        backOrderedLine = np.append(backOrderedLine, nodeA[idx[i]])
-        nodeA[idx[i]]= 0
-        nodeB[idx[i]]= 0
-
-#--------- Forward ordered lines -----#
-forwardOrderedLine = np.flip(backOrderedLine)
-
 #Initiate arrays
 resistance_Rs = ['resistance_Rs']
 resistance_Rm = ['resistance_Rm']
@@ -73,6 +54,33 @@ for i in range(len(lines_data)):
 #Append impedances to data array 
 lines_data = np.append(lines_data, impedance_Zs.reshape(906,1), axis=1)
 lines_data = np.append(lines_data, impedance_Zm.reshape(906,1), axis=1)
+
+#--------- Backward ordered nodes and lines -----#
+#--------- First determine ending nodes
+endNodes = []
+backOrderedNodes = []
+backOrderedLine = []
+nodeA = lines_data[1:,1].astype(int)
+nodeB = lines_data[1:,2].astype(int)
+#Create array with ordered lines
+#lines_ordered = range(906)
+lines_data = np.append(lines_data, lines_data[:,0].reshape(906,1), axis=1)
+lines_data[:,13] = np.char.replace(lines_data[:,13].astype(str), "LINE", "")
+print(lines_data[:,13])
+ordered_lines = np.sort(lines_data[1:,13].astype(int))
+
+while len(backOrderedNodes) < len(lines_data)-1:
+    endNodes = np.setdiff1d(nodeB, nodeA)
+    backOrderedNodes = np.append(backOrderedNodes, endNodes)
+    idx = np.intersect1d(nodeB, endNodes, return_indices=True)[1]
+    for i in range(len(idx)):
+        backOrderedLine = np.append(backOrderedLine, ordered_lines[idx[i]]+1)
+        #backOrderedLine = np.append(backOrderedLine, nodeA[idx[i]])
+        nodeA[idx[i]]= 0
+        nodeB[idx[i]]= 0
+
+#--------- Forward ordered lines -----#
+forwardOrderedLine = np.flip(backOrderedLine)
 
 
 #Create array with real and reactive power for each bus with 3 phases
@@ -167,10 +175,9 @@ for i in range(len(load_profile)-1):
             print(Z_matrix)
             #print(VB)
             nodeVoltages[np.where(bus_coords[1:,0].astype(int) == nodeB)[0],:,iter] = VB
-
-
             #----- CHECK FOR CONVERGENCE -----#
             #error = int(np.subtract(nodeVoltages[:,:,iter], nodeVoltages[:,:,iter-1]).max())
+        
         calcLineCurrents[:,:,i] = lineCurrents[:,:,iter]
         calcNodeVoltages[:,:,i] = nodeVoltages[:,:,iter]
         Tload[i,:] = calcNodeVoltages[0,:,i]*calcLineCurrents[0,:,i]
