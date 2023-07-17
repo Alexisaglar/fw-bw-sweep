@@ -66,7 +66,6 @@ nodeB = lines_data[1:,2].astype(int)
 #lines_ordered = range(906)
 lines_data = np.append(lines_data, lines_data[:,0].reshape(906,1), axis=1)
 lines_data[:,13] = np.char.replace(lines_data[:,13].astype(str), "LINE", "")
-print(lines_data[:,13])
 ordered_lines = np.sort(lines_data[1:,13].astype(int))
 
 while len(backOrderedNodes) < len(lines_data)-1:
@@ -74,7 +73,7 @@ while len(backOrderedNodes) < len(lines_data)-1:
     backOrderedNodes = np.append(backOrderedNodes, endNodes)
     idx = np.intersect1d(nodeB, endNodes, return_indices=True)[1]
     for i in range(len(idx)):
-        backOrderedLine = np.append(backOrderedLine, ordered_lines[idx[i]]+1)
+        backOrderedLine = np.append(backOrderedLine, ordered_lines[idx[i]])
         #backOrderedLine = np.append(backOrderedLine, nodeA[idx[i]])
         nodeA[idx[i]]= 0
         nodeB[idx[i]]= 0
@@ -102,9 +101,9 @@ Qi = np.zeros((len(bus_coords)-1, phases, len(load_profile)-1))
 Qi = (Pi/0.95) * np.sin(np.arccos(PF))
 
 
-calcNodeVoltages = np.zeros((len(bus_coords)-1, phases, 50))
+calcNodeVoltages = np.zeros((len(bus_coords)-1, phases, 1440))
 #calcLoadCurrents = np.zeros((len(bus_coords)-1, phases, 50))
-calcLineCurrents = np.zeros((len(lines_data)-1, phases, 50))
+calcLineCurrents = np.zeros((len(lines_data)-1, phases, 1440))
 Tload = np.zeros((1440,3))
 
 #----- Backward-forward sweep -----#
@@ -113,14 +112,14 @@ for i in range(len(load_profile)-1):
     error = 1
     epsilon = 0.000001
     iter = 0 
-    nodeVoltages = np.zeros((len(bus_coords)-1, phases, 50))
-    loadCurrents = np.zeros((len(bus_coords)-1, phases, 50))
-    lineCurrents = np.zeros((len(lines_data)-1, phases, 50))
+    nodeVoltages = np.zeros((len(bus_coords)-1, phases, 100))
+    loadCurrents = np.zeros((len(bus_coords)-1, phases, 100))
+    lineCurrents = np.zeros((len(lines_data)-1, phases, 100))
     
     if i == 0:
         nodeVoltages[:,:,iter] = np.ones((len(bus_coords)-1,3))*((1*np.exp(1j*(-2*np.pi/3))*np.exp(1j*(2*np.pi/3)))*Vbase).astype(complex)
     else:
-        nodeVoltages[:,:,iter] = calcNodeVoltages[:,:,i]
+        nodeVoltages[:,:,iter] = calcNodeVoltages[:,:,i-1]
     
     while error > epsilon:
         iter = iter+1
@@ -142,14 +141,14 @@ for i in range(len(load_profile)-1):
             else:
                 outCurrents = np.zeros(3)
 
-            print(outCurrents)
+            #print(outCurrents)
             #outCurrentSum = np.sum(outCurrents)
             nB_n = np.where(lines_data[1:,2].astype(int) == node)[0][0]
             loadCurs = loadCurrents[node-1,:,iter]
             sumCurs = loadCurs + outCurrents
-            print(loadCurs)
-            print(sumCurs)
-            print(nA_n, nB_n)
+            #print(loadCurs)
+            #print(sumCurs)
+            #print(nA_n, nB_n)
             lineCurrents[nB_n,:,iter] = sumCurs
 
         #----- Start forward sweep -----#
@@ -159,7 +158,7 @@ for i in range(len(load_profile)-1):
         nodeB_list = lines_data[1:,2].astype(int)
         for fsweep in range(len(forwardOrderedLine)):
             lineNum = int(forwardOrderedLine[fsweep])
-            lineIn = np.where(nodeA_list == lineNum)[0][0]
+            lineIn = np.where(ordered_lines == lineNum)[0][0]
             nodeA = nodeA_list[lineIn]
             nodeB = nodeB_list[lineIn]
             VA = nodeVoltages[np.where(bus_coords[1:,0].astype(int) == nodeA)[0][0],:,iter-1]
@@ -170,14 +169,17 @@ for i in range(len(load_profile)-1):
 
             Z_matrix = np.matrix(np.array([[Zs, Zm, Zm],[Zm, Zs, Zm],[Zm, Zm,Zs]], dtype=complex))
             VB = VA - (Il*Z_matrix)
-            print(VA)
-            print(VB)
-            print(Z_matrix)
-            #print(VB)
+            # print(VA)
+            # print(VB)
+            # print(Z_matrix)
+            # print(VB)
+            # print(Il)
             nodeVoltages[np.where(bus_coords[1:,0].astype(int) == nodeB)[0],:,iter] = VB
             #----- CHECK FOR CONVERGENCE -----#
-            #error = int(np.subtract(nodeVoltages[:,:,iter], nodeVoltages[:,:,iter-1]).max())
+
+        error = np.max(np.abs(np.subtract(nodeVoltages[:,:,iter], nodeVoltages[:,:,iter-1])))
+        print(error)
         
         calcLineCurrents[:,:,i] = lineCurrents[:,:,iter]
         calcNodeVoltages[:,:,i] = nodeVoltages[:,:,iter]
-        Tload[i,:] = calcNodeVoltages[0,:,i]*calcLineCurrents[0,:,i]
+        Tload[i,:] = calcNodeVoltages[1,:,i]*calcLineCurrents[1,:,i]
