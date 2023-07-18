@@ -10,6 +10,7 @@ PF = 0.95
 slackBus = 0
 
 
+
 with open('data/LineCodes.csv', newline='') as linecodefile, open('data/Lines.csv', newline='') as linesfile, open('data/Loads.csv') as loadsfile, open('data/Load Profiles/Load_Profile_1.csv') as profilefile, open('data/Buscoords.csv') as busfile:
     lines_code = np.array(list(csv.reader(linecodefile)), dtype=object)
     lines_data = np.array(list(csv.reader(linesfile)), dtype=object)
@@ -77,8 +78,9 @@ while len(backOrderedNodes) < len(lines_data)-1:
         #backOrderedLine = np.append(backOrderedLine, nodeA[idx[i]])
         nodeA[idx[i]]= 0
         nodeB[idx[i]]= 0
-
+    print(backOrderedNodes)
 #--------- Forward ordered lines -----#
+backOrderedNodes = np.append(backOrderedNodes, 1)
 forwardOrderedLine = np.flip(backOrderedLine)
 
 
@@ -112,9 +114,9 @@ for i in range(len(load_profile)-1):
     error = 1
     epsilon = 0.000001
     iter = 0 
-    nodeVoltages = np.zeros((len(bus_coords)-1, phases, 100))
-    loadCurrents = np.zeros((len(bus_coords)-1, phases, 100))
-    lineCurrents = np.zeros((len(lines_data)-1, phases, 100))
+    nodeVoltages = np.zeros((len(bus_coords)-1, phases, 10000),dtype=complex)
+    loadCurrents = np.zeros((len(bus_coords)-1, phases, 10000),dtype=complex)
+    lineCurrents = np.zeros((len(lines_data)-1, phases, 10000),dtype=complex)
     
     if i == 0:
         nodeVoltages[:,:,iter] = np.ones((len(bus_coords)-1,3))*((1*np.exp(1j*(-2*np.pi/3))*np.exp(1j*(2*np.pi/3)))*Vbase).astype(complex)
@@ -123,9 +125,9 @@ for i in range(len(load_profile)-1):
     
     while error > epsilon:
         iter = iter+1
-        if iter > 100: 
-            print('Error') 
-            break
+        # if iter > 100: 
+        #     print('Error') 
+        #     break
         loadCurrents[:,:,iter] = np.conj((Pi[:,:,i]+1j*Qi[:,:,i])/nodeVoltages[:,:,iter-1]) #Calculate load current from S/V
 
         #----- Start backward sweep -----#
@@ -170,15 +172,15 @@ for i in range(len(load_profile)-1):
             Z_matrix = np.matrix(np.array([[Zs, Zm, Zm],[Zm, Zs, Zm],[Zm, Zm,Zs]], dtype=complex))
             VB = VA - (Il*Z_matrix)
             # print(VA)
-            # print(VB)
+            #print(VB)
             # print(Z_matrix)
-            # print(VB)
-            # print(Il)
-            nodeVoltages[np.where(bus_coords[1:,0].astype(int) == nodeB)[0],:,iter] = VB
+            #print(VB)
+            #print(Il)
+            nodeVoltages[np.where(bus_coords[1:,0].astype(int) == nodeB)[0],:,iter] = VB.astype(complex)
             #----- CHECK FOR CONVERGENCE -----#
 
-        error = np.max(np.abs(np.subtract(nodeVoltages[:,:,iter], nodeVoltages[:,:,iter-1])))
-        print(error)
+        error = np.amax(np.abs(np.subtract(nodeVoltages[:,:,iter], nodeVoltages[:,:,iter-1])))
+        print(error, iter)
         
         calcLineCurrents[:,:,i] = lineCurrents[:,:,iter]
         calcNodeVoltages[:,:,i] = nodeVoltages[:,:,iter]
