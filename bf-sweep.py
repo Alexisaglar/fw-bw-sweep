@@ -38,16 +38,23 @@ for i in range(len(lines_data)):
 
 #Append the resistance and reactance to the array
 lines_data = np.append(lines_data, resistance_Rs.reshape(906,1), axis=1)
+lines_data[1:,7] = lines_data[1:,7].astype(complex)
 lines_data = np.append(lines_data, reactance_Xs.reshape(906,1), axis=1)
-
+lines_data[1:,8] = lines_data[1:,8].astype(complex)
 lines_data = np.append(lines_data, resistance_Rm.reshape(906,1), axis=1)
+lines_data[1:,9] = lines_data[1:,9].astype(complex)
 lines_data = np.append(lines_data, reactance_Xm.reshape(906,1), axis=1)
+lines_data[1:,10] = lines_data[1:,10].astype(complex)
+lines_data[1:,4] = lines_data[1:,4].astype(float)
 
 #Calculate impedances of the lines
 for i in range(len(lines_data)):
     if i !=0:
-        impedance_Zs = np.append(impedance_Zs, float(lines_data[i,7])+1j*float(lines_data[i,8]))
-        impedance_Zm = np.append(impedance_Zm, float(lines_data[i,9])+1j*float(lines_data[i,10]))
+        #((2*lines_data[i,7] + lines_data[i,9])/3)*(lines_data[i,4]/1000) + 1j*((2*lines_data[i,8] + lines_data[i,10])/3)*(lines_data[i,4]/1000)
+        impedance_Zs = np.append(impedance_Zs,((2*lines_data[i,7] + lines_data[i,9])/3)*(lines_data[i,4]/1000) + 1j*((2*lines_data[i,8] + lines_data[i,10])/3)*(lines_data[i,4]/1000))
+        impedance_Zm = np.append(impedance_Zm,((2*lines_data[i,9] - lines_data[i,7])/3)*(lines_data[i,4]/1000) + 1j*((2*lines_data[i,10] - lines_data[i,8])/3)*(lines_data[i,4]/1000))
+        # impedance_Zs = np.append(impedance_Zs, float(lines_data[i,7])+1j*float(lines_data[i,8]))
+        # impedance_Zm = np.append(impedance_Zm, float(lines_data[i,9])+1j*float(lines_data[i,10]))
 
 #Append impedances to data array 
 lines_data = np.append(lines_data, impedance_Zs.reshape(906,1), axis=1)
@@ -91,7 +98,7 @@ for i in range(len(loads_data)):
             if bus_phase == 'C': bus_phase = 2
             Pi[bus-1,bus_phase,:] = load_profile[1:]
 #Convert power to Watts instead of kW >
-Pi = Pi*1000
+Pi = Pi*10000
 
 #Create an same size array as apparent power for reactive power 
 Qi = np.zeros((len(bus_coords)-1, phases, len(load_profile)-1))
@@ -99,10 +106,10 @@ Qi = np.zeros((len(bus_coords)-1, phases, len(load_profile)-1))
 Qi = (Pi/0.95) * np.sin(np.arccos(PF))
 
 
-calcNodeVoltages = np.zeros((len(bus_coords)-1, phases, 1440))
+calcNodeVoltages = np.zeros((len(bus_coords)-1, phases, 1440), dtype=complex)
 #calcLoadCurrents = np.zeros((len(bus_coords)-1, phases, 50))
-calcLineCurrents = np.zeros((len(lines_data)-1, phases, 1440))
-Tload = np.zeros((1440,3))
+calcLineCurrents = np.zeros((len(lines_data)-1, phases, 1440), dtype=complex)
+Tload = np.zeros((1440,3), dtype=complex)
 
 #----- Backward-forward sweep -----#
 for i in range(len(load_profile)-1):
@@ -126,7 +133,7 @@ for i in range(len(load_profile)-1):
         # if iter > 100: 
         #     print('Error') 
         #     break
-        loadCurrents[:,:,iter] = np.conj((Pi[:,:,i]*Qi[:,:,i])/nodeVoltages[:,:,iter-1]) #Calculate load current from S/V
+        loadCurrents[:,:,iter] = np.conj((Pi[:,:,i]+1j*Qi[:,:,i])/nodeVoltages[:,:,iter-1]) #Calculate load current from S/V
 
         #----- Start backward sweep -----#
         for bsweep in range(len(backOrderedNodes)-1):
@@ -163,7 +170,7 @@ for i in range(len(load_profile)-1):
             lineIn = np.where(ordered_lines == lineNum)[0][0]
             nodeA = nodeA_list[lineIn]
             nodeB = nodeB_list[lineIn]
-            VA = nodeVoltages[np.where(bus_coords[1:,0].astype(int) == nodeA)[0][0],:,iter-1]
+            VA = nodeVoltages[np.where(bus_coords[1:,0].astype(int) == nodeA)[0][0],:,iter]
             Il = np.matrix(lineCurrents[lineIn,:,iter])
             
             Zs = lines_data[lineIn+1,11]
@@ -180,11 +187,11 @@ for i in range(len(load_profile)-1):
         
         #----- CHECK FOR CONVERGENCE -----#
         error = 0
-        error = np.real(nodeVoltages[:,:,iter] - nodeVoltages[:,:,iter-1]).max()
+        error = np.real(((nodeVoltages[:,:,iter] - nodeVoltages[:,:,iter-1])).max())
         print(error, iter)
-        print(nodeVoltages[900:,:,iter])
-        print(lineCurrents[900:,:,iter])
+        #print(nodeVoltages[900:,:,iter])
+        #print(lineCurrents[900:,:,iter])
         
-    calcLineCurrents[:,:,i] = lineCurrents[:,:,iter]
-    calcNodeVoltages[:,:,i] = nodeVoltages[:,:,iter]
+    calcLineCurrents[:,:,i] = lineCurrents[:,:,iter].astype(complex)
+    calcNodeVoltages[:,:,i] = nodeVoltages[:,:,iter].astype(complex)
     Tload[i,:] = calcNodeVoltages[1,:,i]*calcLineCurrents[1,:,i]
