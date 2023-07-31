@@ -1,5 +1,7 @@
 import numpy as np
 import csv
+import networkx as nx
+import matplotlib.pyplot as plt
 
 #Constants 
 Sbase=100; #MVA
@@ -43,6 +45,8 @@ def data_cleaning(load_profile, lines_data, lines_code):
     lines_data[1:,9] = lines_data[1:,9].astype(complex)
     lines_data[1:,10] = lines_data[1:,10].astype(complex)
     lines_data[1:,4] = lines_data[1:,4].astype(float)
+    lines_data[1:,1] = lines_data[1:,1].astype(int)
+    lines_data[1:,2] = lines_data[1:,2].astype(int)
 
     #Calculate impedances of the lines columns are hardcoded in relation to the previous order of appended columns (Rm, Rx, Xs, Xm)
     for i in range(len(lines_data)):
@@ -176,12 +180,32 @@ def f_b_sweep(Pi, Qi, calcLineCurrents, calcNodeVoltages, Tload, backOrderedNode
         print(Tload[i,:])
     return Tload, calcNodeVoltages, calcLineCurrents
 
+def plot_network():
+    lv_Network = nx.Graph()
+    bus_coords[1:,0] = bus_coords[1:,0].astype(int)
+    bus_coords[1:,1] = bus_coords[1:,1].astype(float)
+    bus_coords[1:,2] = bus_coords[1:,2].astype(float)
+    loads_data[1:, 2] = loads_data[1:, 2].astype(int)
+
+    for i in range(len(loads_data)-1):
+        if 
+        x = np.where(bus_coords[1:,1]==loads_data[i+1, 2])
+        y = np.where(bus_coords[1:,2]==loads_data[i+1, 2])
+        lv_Network.add_node(loads_data[i+1, 2], pos=[x, y])
+
+    for i in range(len(lines_data)-1):
+        lv_Network.add_edge(lines_data[i+1, 1], lines_data[i+1, 2], length=lines_data[i+1, 4])
+    nx.draw_networkx_nodes(lv_Network, nx.get_node_attributes(lv_Network, 'pos'), nodelist=loads_data[1:, 2], node_color=loads_data[1:, 3], node_size=7 )
+    #nx.draw_networkx_edges(lv_Network, nx.get_edge_attributes(lv_Network, 'pos'), width=1.5, edge_color='#050505')
+    plt.title('NW LV Network', loc='left')
+    plt.show()
+
 lines_data, load_profile = data_cleaning(load_profile, lines_data, lines_code)
 backOrderedNodes, forwardOrderedLine, ordered_lines, lines_data = end_nodes(lines_data)
 Pi, Qi, calcLineCurrents, calcNodeVoltages, Tload = initial_values(loads_data, load_profile, bus_coords)
+plot_network()
 #Now do the f-b-sweep with all the data calculated
 Tload, calcNodeVoltages, calcLineCurrents = f_b_sweep(Pi, Qi, calcLineCurrents, calcNodeVoltages, Tload, backOrderedNodes, forwardOrderedLine, ordered_lines, load_profile)
-
 
 Pout_A = np.real(Tload[:,0])
 Qout_A = np.imag(Tload[:,0])
