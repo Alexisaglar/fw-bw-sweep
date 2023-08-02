@@ -2,6 +2,8 @@ import numpy as np
 import csv
 import networkx as nx
 import matplotlib.pyplot as plt
+from datetime import datetime
+import matplotlib.dates
 
 #Constants 
 Sbase=100; #MVA
@@ -97,7 +99,7 @@ def initial_values(loads_data, load_profile, bus_coords):
                 if bus_phase == 'C': bus_phase = 2
                 Pi[bus-1,bus_phase,:] = load_profile[1:]
     #Convert power to Watts instead of kW >
-    Pi = Pi*10000
+    Pi = Pi*1000
 
     #Create an same size array as apparent power for reactive power 
     Qi = np.zeros((len(bus_coords)-1, phases, len(load_profile)-1))
@@ -187,25 +189,47 @@ def plot_network():
     bus_coords[1:,2] = bus_coords[1:,2].astype(float)
     loads_data[1:, 2] = loads_data[1:, 2].astype(int)
 
+    #Make all buses nodes in the network
+    for i in range(len(bus_coords)-1):
+        x = bus_coords[i+1,1]
+        y = bus_coords[i+1,2]
+        lv_Network.add_node(bus_coords[i+1,0], pos=[x, y])
+
+    #Create house load nodes
+    bus_colors = []
     for i in range(len(loads_data)-1):
-        if 
+        bus_phase = loads_data[i+1,3]
+        if bus_phase == 'A': bus_phase = "red"
+        if bus_phase == 'B': bus_phase = "blue"
+        if bus_phase == 'C': bus_phase = "green"
+        bus_colors = np.append(bus_colors, bus_phase)
         x = np.where(bus_coords[1:,1]==loads_data[i+1, 2])
         y = np.where(bus_coords[1:,2]==loads_data[i+1, 2])
-        lv_Network.add_node(loads_data[i+1, 2], pos=[x, y])
+        lv_Network.add_node(loads_data[i+1, 0], pos=[x, y])
 
+    #Add edges to the nodes
     for i in range(len(lines_data)-1):
         lv_Network.add_edge(lines_data[i+1, 1], lines_data[i+1, 2], length=lines_data[i+1, 4])
-    nx.draw_networkx_nodes(lv_Network, nx.get_node_attributes(lv_Network, 'pos'), nodelist=loads_data[1:, 2], node_color=loads_data[1:, 3], node_size=7 )
-    #nx.draw_networkx_edges(lv_Network, nx.get_edge_attributes(lv_Network, 'pos'), width=1.5, edge_color='#050505')
+
+    nx.draw_networkx_edges(lv_Network, nx.get_node_attributes(lv_Network, 'pos'), width=1.5, edge_color='#050505')
+    nx.draw_networkx_nodes(lv_Network, nx.get_node_attributes(lv_Network, 'pos'), nodelist=loads_data[1:, 2], node_color=bus_colors, node_size=7 )
     plt.title('NW LV Network', loc='left')
     plt.show()
 
+load = load_profile[1:,1].astype(float)*1000
+hour = np.arange(0,1440,1)
+plt.plot(hour,load)
+plt.show()
 lines_data, load_profile = data_cleaning(load_profile, lines_data, lines_code)
 backOrderedNodes, forwardOrderedLine, ordered_lines, lines_data = end_nodes(lines_data)
 Pi, Qi, calcLineCurrents, calcNodeVoltages, Tload = initial_values(loads_data, load_profile, bus_coords)
 plot_network()
+
 #Now do the f-b-sweep with all the data calculated
 Tload, calcNodeVoltages, calcLineCurrents = f_b_sweep(Pi, Qi, calcLineCurrents, calcNodeVoltages, Tload, backOrderedNodes, forwardOrderedLine, ordered_lines, load_profile)
+
+plt.plot(hour, Tload)
+plt.show()
 
 Pout_A = np.real(Tload[:,0])
 Qout_A = np.imag(Tload[:,0])
