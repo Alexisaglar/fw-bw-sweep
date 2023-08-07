@@ -98,7 +98,7 @@ def initial_values(loads_data, load_profile, bus_coords):
                 if bus_phase == 'B': bus_phase = 1
                 if bus_phase == 'C': bus_phase = 2
                 Pi[bus-1,bus_phase,:] = load_profile[1:]
-    #Convert power to Watts instead of kW >
+    #Convert power to Watts instead of kW. 
     Pi = Pi*1000
 
     #Create an same size array as apparent power for reactive power 
